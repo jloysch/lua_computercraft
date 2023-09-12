@@ -1,0 +1,252 @@
+
+local threshold = 106094 --gives us a six digit number to make new ascii numbers
+local offset = 13
+
+local p = 3
+local q = 13
+
+local deobsf_offset = 2
+
+local decipher_numbers = {}
+
+function obsf(str)
+  local recomb = ""
+  local dc = ""
+  local decnumct = 1
+  decipher_numbers = {}
+  
+  
+  for c in str:gmatch"." do
+   local ccode = string.byte(c)
+    
+	local offsetcount = 1
+	while (ccode < threshold) do
+	  ccode = ccode + offset
+	  
+	  offsetcount = offsetcount + 1
+	end
+	
+	table.insert(decipher_numbers, decnumct, dc .. offsetcount)
+	decnumct = decnumct + 1
+	
+	--dc =dc .. "." .. offsetcount
+	
+   --print(ccode)
+   --recomb = recomb .. "." .. ccode
+   recomb = recomb .. ccode
+   offsetcount = 1
+   
+   --[cipherascii.offset]
+  end
+  
+  print("[" .. recomb .. "]")
+  --print("[" .. dc .. "]")
+  
+
+  for k,v in pairs(decipher_numbers) do
+    --print("NUMKEY> " .. v)
+  end
+  print("OB > " .. recomb)
+  
+  return recomb
+  
+end
+
+function to_integer(num_dec)
+  return num_dec - tonumber(num_dec)%1
+end
+
+function rechunk(str) -- returns the 3 chunk sequence to 2 chunk
+
+  local cct = 0
+  local recomb = ""
+  local tmp = ""
+  
+  for c in str:gmatch"." do
+    cct = cct + 1
+	
+	tmp = tmp .. c
+	
+	if (cct == 3) then
+	  cct = 0
+	  --print(tmp)
+	  recomb = recomb .. string.char(tonumber(tmp))
+	  tmp = ""
+	end
+  end
+  
+  print("CHUNK > " .. recomb)
+  return recomb
+end
+
+function reobsf(str) -- 2 -> 3 -> deobsf
+  print("DEOB got " .. str)
+  local deob = ""
+  
+  local deob_numkey_sync_ctr = 1
+  
+  local switch = false
+  
+  for c in str:gmatch"." do
+
+  -- print("CHAR " .. c)
+	
+	--tmp = tmp .. c
+	
+		
+	  if (string.byte(c) < 100) then 
+		local tmp2 = "0"
+		
+		tmp2 = "0" .. tostring(string.byte(c))
+		
+		
+		--print("Adding 0 to " .. c .. " results in " .. tmp2)
+		c = tmp2
+		
+		  if (switch) then
+		    deob = deob .. c .. ","
+		  else
+		    deob = deob .. c
+		  end
+		  
+		 -- print("Added " .. c)
+	  else
+	    if (switch) then
+		  deob = deob .. string.byte(c) .. ","
+		else
+		  deob = deob .. string.byte(c)
+		end
+		--  print("Added " .. string.byte(c))
+	  end
+	  
+	  switch = not switch
+	
+	
+  end
+  
+  
+  
+  print("REOB > " .. deob)
+  
+  
+  
+   local deciphernum = 0
+   local decipher = ""
+   
+	for word in string.gmatch(deob, '([^,]+)') do
+		--print(word)
+		
+		val = tonumber(word)
+		newval = val
+		--deciphernum = to_integer(word/offset)
+		--deciphernum = deciphernum - tonumber(deciphernum)%1
+		
+		--deciphernum = 8153
+		deciphernum = decipher_numbers[deob_numkey_sync_ctr]
+		deob_numkey_sync_ctr = deob_numkey_sync_ctr + 1
+		
+		for i=deobsf_offset,deciphernum do
+		  if (val > 100) then
+		    val = val - 13
+		  else
+		    --val = val - deobsf_offset
+		    break
+		  end
+		end
+		
+		--print("val " .. val)
+		
+		--local realword = (fakeword) + (1
+		
+		
+		--print("WORD = " .. word)
+		--print("Deciphernum = " .. deciphernum)
+		decipher = decipher .. string.char(val)
+	end
+	
+	print("--decipher block BEGIN--")
+	for k,v in pairs(decipher_numbers) do
+	  print(v)
+	end
+	print("--decipher block END--")
+	
+	 
+	print("Decipher > " .. decipher)
+  return decipher
+end
+
+--deobs not done, doen't work
+
+--This is a two way cipher
+
+function terminal_mode()
+	while true do
+		decipher_numbers = {}
+		print("Enter a string to obsf: ")
+		rep = read()
+		local obsf = obsf(rep)
+		local cipher = rechunk(obsf)
+		local decipher = reobsf(cipher)
+		print(obsf)
+		print(cipher)
+		print(decipher)
+		
+		local combined = {}
+		table.insert(combined, 1, obsf)
+		table.insert(combined, 2, decipher_numbers)
+		
+		print(textutils.serialize(combined))
+		
+		print("Write to file? y/n")
+		
+		if (read() == "y") then
+		  local file = fs.open("bse_tmpidfile", "w")
+		  file.write(textutils.serialize(combined))
+		  file.close()
+		  print("Written to /bse_tmpidfile")
+		else
+		end
+		sleep(0.1)
+	end
+end
+
+function read_mode()
+	decipher_numbers = {}
+	
+	local file = fs.open("bse_tmpidfile", "r")
+	filedata = file.readAll()
+	local combined = textutils.unserialize(filedata)
+	
+	local ciphernumber = combined[1]
+	local decipher_numbers = combined[2]
+	
+	local obsf = obsf(rep)
+	local cipher = rechunk(obsf)
+	local decipher = reobsf(cipher)
+	print(obsf)
+	print(cipher)
+	print(decipher)
+	
+	--print("Enter : ")
+	--rep = read()
+	--local obsf = obsf(rep)
+	--local cipher = rechunk(obsf)
+	
+	--local decipher = rechunk(reobsf(cipher))
+	
+	--print(obsf)
+	--print(cipher)
+	--print(decipher)
+
+	--local combined = {}
+	--table.insert(combined, 1, obsf)
+	--table.insert(combined, 2, decipher_numbers)
+
+	--print(decipher)
+
+	
+	sleep(3)
+end
+
+terminal_mode()
+--read_mode()

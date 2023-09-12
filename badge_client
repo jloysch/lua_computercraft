@@ -1,0 +1,279 @@
+disk_drive_side = "left"
+door_side = "right"
+
+local modem = "back"
+
+rednet.close(modem)
+rednet.open(modem)
+
+computer_id = "control_main_sect0alt.".. os.getComputerID()
+
+auth_controller_id = 14
+programs_controller_id = 20
+
+id_disk_path = "disk\\ID"
+
+door_open_time = 5
+alarm_time = 10
+
+redstone.setOutput("top", false)
+
+_AUTH_REQUEST_CODE = "100"
+_AUTH_OKAY_CODE = "111"
+_AUTH_ACCESS_DENIED = "000"
+_REMOTE_REBOOT_REQUEST = "612"
+
+_END_SESSION = "400"
+
+AUTH_TIMEOUT = 7
+
+NET_CMDS_LISTEN_TIMEOUT = 0.5
+
+alarm_side = "top"
+
+local props_table = {}
+local props_counter = 1
+
+function net_sleep(timesecs)
+  for i=1,timesecs do
+    shell.run("rsh") -- >= 1 sec wait time guaranteed
+  end
+end
+function add_prop(key, val)
+  --table.insert(newPropRelation, 1, (key = val))
+  table.insert(props_table, props_counter, key .. "," .. val)
+  props_counter = props_counter + 1
+end
+
+function print_table(table)
+	for key,value in pairs( table ) do
+	   print(tostring(key)..": "..tostring(value))
+	end
+end
+
+function prop_value_from_table(target)
+  for key,value in pairs( props_table ) do
+      
+	  print("Restoring " .. target)
+	    
+	  local tab = {} --splitting commas
+	  local i = 1
+	  
+	  for word in string.gmatch(value, '([^,]+)') do
+			--print(word)
+			table.insert(tab , i , word)
+			i = i+1
+	  end
+	  
+	  nkey = tab[1]
+	  nval = tab[2]
+		
+	
+	
+	  if (nkey == target) then
+	    print("Property recovered > " .. target .. " = " .. nval)
+		
+		
+		return nval
+	 
+	  end
+	  
+	end
+	print("No value recovered for " .. target)
+	return nil
+end
+
+function restore_local_props()
+
+  local props = nil
+  
+  if (fs.exists("props")) then
+  
+    props = fs.open("props", "r")
+	
+	local serializedTable = props.readAll()
+
+	local unserialized = textutils.unserialize( serializedTable )
+	--print(unserialized)
+	props_table = unserialized
+	
+	alarm_side = prop_value_from_table("alarm_side")
+	alarm_time = prop_value_from_table("alarm_time")
+	door_open_time = prop_value_from_table("door_open_time")
+	id_disk_path = prop_value_from_table("id_disk_path")
+	computer_id = prop_value_from_table("computer_id")
+	modem = prop_value_from_table("modem")
+	door_side = prop_value_from_table("door_side")
+	disk_drive_side = prop_value_from_table("disk_drive_side")
+	
+	print("Properties read and restored.")
+	
+  else
+    print("No props, writing default.")
+    props_table = {}
+    props = fs.open("props", "w")
+	
+	add_prop("alarm_side", alarm_side)
+	--add_prop("AUTH_TIMEOUT", AUTH_TIMEOUT)
+	--add_prop("_END_SESSION", _END_SESSION)
+	--add_prop("_AUTH_ACCESS_DENIED", _AUTH_ACCESS_DENIED)
+	--add_prop("_AUTH_OKAY_CODE", _AUTH_OKAY_CODE)
+	--add_prop("_AUTH_REQUEST_CODE", _AUTH_REQUEST_CODE)
+	add_prop("alarm_time", alarm_time)
+	add_prop("door_open_time", door_open_time)
+	add_prop("id_disk_path", id_disk_path)
+	add_prop("computer_id", computer_id)
+	add_prop("modem", modem)
+	add_prop("door_side", door_side)
+	add_prop("disk_drive_side", disk_drive_side)
+	
+	print(props_table)
+	props.write(textutils.serialize(props_table))
+	
+	
+	print("New properties written.")
+	
+  end
+  
+  props.close()
+  
+end
+
+-- CODE
+
+
+function alarm()
+  redstone.setOutput(alarm_side, true)
+  net_sleep(alarm_time)
+  redstone.setOutput(alarm_side, false)
+  disk.eject(disk_drive_side)
+
+end
+
+local access_granted = false
+
+function check_with_server(diskID)
+  print("Sending auth to " .. auth_controller_id)
+  rednet.send(auth_controller_id, tostring(_AUTH_REQUEST_CODE))
+  print("Sent, waiting..")
+  local sid, msg = rednet.receive(AUTH_TIMEOUT)
+  --print("RECEIVED '" .. msg .. "'") -- 100 back
+  
+  if (msg == _AUTH_REQUEST_CODE) then
+    net_sleep(1)
+    rednet.send(auth_controller_id, tostring(diskID))
+	print("Sent over DISKID")
+	
+	local sid, msg = rednet.receive(AUTH_TIMEOUT)
+	--print("msg > " .. msg)
+	if (msg == _AUTH_OKAY_CODE) and (sid == auth_controller_id) then
+	  disk.eject(disk_drive_side)
+	  access_granted = true
+	  print("Access granted from server.")
+	  redstone.setOutput(door_side, true)
+	  net_sleep(door_open_time)
+	  redstone.setOutput(door_side, false)
+	else
+	
+	  if (msg == _AUTH_ACCESS_DENIED) then
+	    print("Access is denied.")
+		alarm()
+	  end
+	  
+	  disk.eject(disk_drive_side)
+	  net_sleep(3)
+	end
+	
+  else
+    print("No link to server.")
+  end
+end
+
+
+
+local offline = false
+
+local triedAgain = false
+
+function check_badge(diskID, diskPth)
+  local idFile = fs.open("disk\\ID", "r") 
+  
+
+	  if not idFile then
+		
+		
+		print("NO FILE FOUND AT " .. diskPth)
+		
+		print("FRAUD DETECTED")
+		alarm()
+	
+		
+	  else
+		  local idStr = idFile.readAll()
+		  print("Checking against server..")
+		  check_with_server(idStr)
+		  --print("Checked.")
+		  
+		 
+		 -- if (idStr == "PP") then
+		 --    disk.eject(disk_drive_side)
+		--	redstone.setOutput(door_side, true)
+		--	sleep(door_open_time)
+		--	redstone.setOutput(door_side, false)
+			--sleep(1)
+		--  else
+		--	print("FRAUD DETECTED")
+		--	disk.eject(disk_drive_side)
+		--	alarm()
+		--  end
+		
+		  
+		end
+		
+		
+	
+end
+
+
+function await_badge()
+
+  while not (disk.isPresent(disk_drive_side)) do
+    --print("*")
+    net_sleep(1)
+	
+	local sid, msg = rednet.receive(NET_CMDS_LISTEN_TIMEOUT) --listen to net commands indefinitely while not in use
+	
+	if ((sid == programs_controller_id) or (sid == auth_controller_id)) then -- message handling
+	  if (msg == _REMOTE_REBOOT_REQUEST) then
+	    os.reboot()
+	  end
+	else
+	  --print("Ignore
+	end
+  end
+  
+  --diskID = disk.getID(disk_drive_side)
+  diskPth = disk.getMountPath(disk_drive_side)
+  --diskPth = disk.getMountPath(string side)
+  
+  --diskID = fs.open(id_disk_path, "r").readAll()
+  --diskID = 0
+ -- diskID = 0
+  --diskID = fs.open(diskPth .. "\\
+  check_badge(diskID, diskPth)
+  
+end
+
+restore_local_props()
+
+while true do
+  term.clear()
+  term.setCursorPos(1,1)
+  print(computer_id)
+  print("Enter badge >>>")
+  
+
+  
+  await_badge()
+  net_sleep(1)
+end

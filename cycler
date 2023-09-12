@@ -1,0 +1,76 @@
+term.clear()
+term.setCursorPos(1,1)
+
+local control_side = "back"
+cycle_time = 30--seconds
+light_flash_intermediate_time = 0.3
+
+local cycle_high = false
+
+function flash_lights()
+  redstone.setOutput("top", true)
+  net_sleep(light_flash_intermediate_time)
+  redstone.setOutput("top", false)
+  net_sleep(light_flash_intermediate_time)
+  redstone.setOutput("bottom", true)
+  net_sleep(light_flash_intermediate_time)
+  redstone.setOutput("bottom", false)
+  net_sleep(light_flash_intermediate_time)
+end
+
+function ms_step_sleep(numsecs)
+  for i=1, numsecs do
+    coroutine.yield()
+    sleep(0.1)
+  end
+end
+
+function net_sleep(time)
+ 
+ --coroutine.yield()
+ 
+
+ shell.run("rsh") --sleep one second
+ --sleep(time)
+  
+end
+
+function high_cycle()
+	redstone.setOutput(control_side, true)
+	--flash_lights()
+	net_sleep(1)
+end
+
+function low_cycle()
+    redstone.setOutput(control_side, false)
+	net_sleep(1)
+end
+
+high_repeat = 1
+low_repeat = 1
+
+function cycle()
+  while true do
+    for i=1, high_repeat do
+	  redstone.setOutput(control_side, false)
+	  for j=1, cycle_time/2 do
+		  high_cycle()
+		  print("Cycling high " .. j .. "/" .. cycle_time/2 .. ", rep. " .. i .. "/" .. high_repeat)
+		 
+		  net_sleep(1)
+	  end
+	end
+	for i=1, low_repeat do
+	  redstone.setOutput(control_side, true)
+	 -- coroutine.yield()
+	  for j=1, cycle_time/2 do
+		  low_cycle()
+		  print("Cycling low " .. j .. "/" .. cycle_time/2 .. ", rep. " .. i .. "/" .. high_repeat)
+		   
+		  net_sleep(1)
+	  end
+	end
+  end
+end
+
+cycle()

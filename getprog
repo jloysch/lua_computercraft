@@ -1,0 +1,342 @@
+print("GETPROG _ Dynamic Programs Getter")
+print("Computer " .. os.getComputerID())
+
+--modem prop externalized
+
+if (fs.exists("modemprop")) then
+  local file = fs.open("modemprop", "r")
+  modem_side = file.readAll()
+  file.close()
+elseif (fs.exists("disk//modemprop")) then
+  local file = fs.open("disk//modemprop", "r")
+  modem_side = file.readAll()
+  file.close()
+else 
+  modem_side = "back"
+  local file = fs.open("modemprop", "w")
+  file.write(modem_side)
+  file.close()
+end
+
+local disk_side = "left"
+
+_SELECT_PROGRAM = "411"
+_PROG_TRANSMIT_FAIL = "432"
+
+AUTH_TIMEOUT = 3
+SELECT_TIMEOUT = 5
+
+rednet.close(modem_side)
+rednet.open(modem_side)
+
+controller_id = 20
+--assigned_prog = "badge_client" --now externalized in progvar
+
+if (fs.exists("disk//progvar")) then -- (if on disk)
+  assigned_prog_file = fs.open("disk//progvar", "r")
+  assigned_prog = assigned_prog_file.readAll()
+elseif (fs.exists("progvar")) then
+  assigned_prog_file = fs.open("progvar", "r")
+  assigned_prog = assigned_prog_file.readAll()
+else
+  assigned_prog = "default"
+  local assigned_prog_file = fs.open("progvar", "w")
+  assigned_prog_file.write(assigned_prog)
+  assigned_prog_file.close()
+end
+
+print("DYNPROG CONTROLLER @ " .. controller_id)
+
+function write_by_line(data, file)
+  local line_count  = lines_in(data)
+  Print("Writing lines")
+  for i=1, line_count do
+  print("Line " .. i)
+  print(data[i])
+    file.writeLine(data[i])
+  end
+end
+
+--reference
+function lines_in(string)
+   local count = 1
+    while true do
+      local line = io.read()
+      if line == nil then break end
+      --io.write(string.format("%6d  ", count), line, "\n")
+	  print("COUNT > " .. count)
+      count = count + 1
+    end
+	return count
+end
+
+function cold_wait_reboot()
+	function to_places(str, num)
+	  local ct = 1
+	  local rc = ""
+	  
+	  for c in str:gmatch"." do
+	   ct = ct + 1
+	   if (ct == num) then
+		 return rc
+		end
+		
+		rc = rc .. c
+		
+	  end
+	  return tonumber(rc)
+	end
+
+	local rep = to_places(tostring(os.clock()%1*10), 3)
+	--print("SLEEP " .. rep)
+	print("[Desync Time = " .. rep .. " secs]")
+	sleep(rep)
+end
+
+local retry = 0
+local retry_max = 3
+
+function run_rsh()
+  shell.run("rsh")
+end
+
+function run_asp(prog)
+  shell.run(prog)
+end
+
+function check_validity(progfile)
+
+  if (fs.exists(progfile)) then
+  
+    local pf = fs.open(progfile, "r")
+	local read = pf.readAll()
+	pf.close()
+	
+	if (read == "411") then --obviously got transmission error due to busy signals and sync, just reboot the computer and delete these.
+	  --fs.delete(progfile)
+	  print("FATAL > BAD FILE! PROGFILE BAD!")
+	  
+	  --resend the invocation to catch back up with the server 
+
+		rednet.send(controller_id, progfile)
+		
+		local sid, prog = rednet.receive(SELECT_TIMEOUT)
+		
+		local new_prog_file = fs.open(progfile, "w")
+		
+		if not (prog == nil) then
+		  new_prog_file.write(prog)
+		else
+		  print("FATAL, NO PROG COULD BE RECOVERED! RESTARTING!")
+		end
+		
+		new_prog_file.close()
+		
+	  sleep(3)
+	  os.reboot() --immediately reboot if prog is bad, it'll overwrite
+	end
+	
+	
+	
+	local pf = fs.open("rsh", "r")
+	local read = pf.readAll()
+	
+	pf.close()
+	
+	--print(read)
+	
+	if ((read) == "411") then --obviously got transmission error due to busy signals and sync, just reboot the computer and delete these.
+	  fs.delete("rsh") --immediately reboot if rsh is bad, it'll overwrite on next
+	  print("FATAL > BAD FILE! RSH BAD!")
+	  
+	  	  
+		rednet.send(controller_id, "rsh")
+		
+		local sid, rsh = rednet.receive(SELECT_TIMEOUT)
+		
+		local new_rsh_file = fs.open("rsh", "w")
+		
+		if not (rsh == nil) then
+		  new_rsh_file.write(rsh)
+		  
+		else
+		  print("FATAL, NO RSH COULD BE RECOVERED! RESTARTING!")
+		end
+		
+		new_rsh_file.close()
+	  
+	  sleep(3)
+	  os.reboot()
+	end
+	
+	
+  end
+end
+
+while true do
+    
+	cold_wait_reboot()
+	
+	--rednet.send(controller_id, os.getComputerID() .. " rq prog " .. assigned_prog)
+	
+	if ((assigned_prog == "") or (assigned_prog == nil)) then
+	  print("REASSIGNED TO DEFAULT, PROGVAR HAS BEEN CORRUPTED!")
+	  sleep(3)
+	  assigned_prog = "default"
+	end
+	rednet.send(controller_id, assigned_prog)
+
+    print("Requesting program..")
+	local sid, msg = rednet.receive(SELECT_TIMEOUT) --Will get select prog prompt back
+    print("Waiting..")
+	
+	if (sid == controller_id) then
+	  rednet.send(controller_id, assigned_prog)
+	  
+	  local rid, prog = rednet.receive()
+	  
+	  if (rid == sid) then
+		print("Received program from server. Writing locally.")
+		
+		if (prog == _PROG_TRANSMIT_FAIL) then
+		  print("FAILURE! RECEIVED INVALID PROGRAM!")
+		else
+		  --print(prog)
+		
+		fs.delete(assigned_prog)
+		print("Deleted old version of program '" .. assigned_prog .. "'")
+		local newprogfile = fs.open((assigned_prog), "w") 
+		 
+		 --print(prog)
+		 --newprogfile.write(prog)
+		 --print(prog)
+		  --write_by_line(prog, newprogfile)
+		  
+		  --newprogfile.write(textutils.serialize(prog))
+		  newprogfile.write(prog)
+		  
+		
+		newprogfile.close()
+		
+		print("Requesting rsh..")
+		sleep(3)
+		
+		
+		rednet.send(controller_id, "rsh") --initial invocation and wasted bits to the bit bucket but needed to synchronize the requests with the server.
+		
+		local t, x = rednet.receive(1) --minimal frame
+		t = nil
+		x = nil --deref
+		
+		
+		
+		rednet.send(controller_id, "rsh")
+		
+		local sid, rsh = rednet.receive(SELECT_TIMEOUT)
+		
+		local new_rsh_file = fs.open("rsh", "w")
+		
+		if not (rsh == nil) then
+		  new_rsh_file.write(rsh)
+		else
+		  print("FATAL, NO RSH!")
+		end
+		
+		new_rsh_file.close()
+		
+
+		
+		if (fs.exists(assigned_prog)) then
+		  
+			print("New file written to /" .. assigned_prog)
+			
+			
+		 else
+		   print("Program received but was unable to write. Please try again")
+		 end
+
+        check_validity(assigned_prog)
+		
+		for i=1, 2 do
+		  print("Running updated shell program in " .. 5-i)
+		  sleep(1)
+		end
+		
+		--MAIN PROG RUNNING AREA ============================================================================
+
+		--shell.run(assigned_prog)
+		
+		
+		--parallel.waitForAny(shell.run("rsh"), shell.run(assigned_prog)) 
+		
+			
+		--[[	
+		while true do 
+			
+			parallel.waitForAny(shell.run(assigned_prog)) 
+			parallel.waitForAny(shell.run("rsh"))
+			--print("RSH > ")
+			--coroutine.resume(rsh_cr)
+			--print("PROG >")
+			--sleep(0.1)
+			--coroutine.resume(prog_cr)
+			print("XXX")
+			
+			
+		end
+		]]--
+		
+		--local prog_rsh = coroutine.create(run_rsh)
+		--local prog_crt = coroutine.create(run_asp(assigned_prog))
+		
+		--[[
+		while true do 
+		  local prog_rsh = coroutine.create(run_rsh)
+		  local prog_crt = coroutine.create(run_asp(assigned_prog))
+		  
+		  parallel.waitForAny(run_rsh, run_asp) 
+		  
+		 
+		  
+		  
+		end
+		]]--
+		
+		
+		--local prog_rsh = coroutine.create(run_rsh)
+		--local prog_crt = coroutine.create(run_asp(assigned_prog))
+
+		
+		--[[
+		while not (coroutine.status(prog_rsh) == "dead") do
+		    print("RESUMING RSH")
+			coroutine.resume(prog_rsh)
+
+			
+
+			--print(result)  --# First prints 1 through 10, then prints "done!"
+			sleep(0.1)
+			print("Resuming progcrt")
+			coroutine.resume(prog_crt)
+			sleep(0.1)
+		end
+		]]--
+
+
+		
+		shell.run(assigned_prog)
+		break
+		
+		
+		
+		end
+	  end
+	end
+	
+	print("No response. Rebooting shortly.")
+	cold_wait_reboot()
+	os.reboot()
+	
+end
+
+

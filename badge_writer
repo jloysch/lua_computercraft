@@ -1,0 +1,16 @@
+id_disk_path = "disk\\ID"
+
+local idFile = fs.open(id_disk_path, "w") 
+
+idFile.write("PP")
+
+disk_label = "JOSHS ID BADGE"
+disk_side = "right"
+
+--idFile.flush()
+
+disk.setLabel(disk_side, disk_label)
+
+idFile.close()
+
+print("BADGE WRITTEN")

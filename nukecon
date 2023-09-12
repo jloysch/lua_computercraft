@@ -1,0 +1,181 @@
+
+local modem = "top"
+
+local computer_name="nukecon_controller_computer"
+NUKECON_SERVER_INTERNAL_NETWORK_KEY = "SODFUB08hse0f8gwe9f7"
+
+rednet.close(modem)
+rednet.open(modem)
+
+term.clear()
+
+_AUTH_REQUEST_CODE = "100"
+_AUTH_OKAY_CODE = "111"
+
+_END_SESSION = "400"
+
+AUTH_TIMEOUT = 30
+
+print("[#" .. os.getComputerID() .. " listening..] - " .. computer_name)
+
+PRERESERVED_IDS = {17}
+LOGGED_IN_USERS = {}
+num_logged_in = 0
+
+function logoff(sid)
+  local pos = 1
+  local valueRemoved = false
+  for key,value in pairs( LOGGED_IN_USERS ) do
+	   --print(tostring(key)..": "..tostring(value))
+	   if (value == sid) then
+	     table.remove(LOGGED_IN_USERS, pos)
+		 valueRemoved = true
+		 break
+	   end
+	   pos = pos + 1
+	end
+   
+   if (valueRemoved) then
+     print("Remote #" .. sid .. " has ended their session.")
+   end
+end
+
+function evaluate_remote_shell(sid, msg)
+  local response = ""
+  if (msg == "logoff") then
+    rednet.send(sid, _END_SESSION)
+	logoff(sid)
+	
+	
+  elseif (msg == "help") then
+    response = "Here are a list of commands: help, logoff, nukecon, power, authserv"
+  elseif (msg == "whoami") then
+    response = computer_name
+  else
+    response = "Your query was unrecognized."
+  end
+  
+  if (not response) then
+    rednet.send(sid, "INTERNAL ERROR")
+  else
+    rednet.send(sid, response)
+  end
+end
+
+function reset_term()
+	term.clear()
+	term.setCursorPos(1,1)
+end
+
+
+function print_table(table)
+	for key,value in pairs( table ) do
+	   print(tostring(key)..": "..tostring(value))
+	end
+end
+
+function send_auth_back(sid)
+  rednet.send(sid, _AUTH_OKAY_CODE)
+end
+
+function do_login(secret, sid)
+  
+    if (secret == NUKECON_SERVER_INTERNAL_NETWORK_KEY) then
+	  print("INFO: SUCCESSFULLY AUTHENTICATED LOGIN.")
+	  num_logged_in = num_logged_in + 1
+	  
+	  table.insert(LOGGED_IN_USERS, num_logged_in, sid)
+	  
+	  send_auth_back(sid)
+	  
+	  print("")
+	  print("USERS LOGGED >")
+	  print_table(LOGGED_IN_USERS)
+	  print("---")
+	  
+	  
+    else
+	  print("INFO: SECRET INCORRECT")
+	end
+
+end
+
+function is_authenticated(sid) 
+
+ -- print("SID = " .. sid)
+  auth = false
+  
+	for key,value in pairs( PRERESERVED_IDS ) do
+	    if value == sid then
+		   --print(tostring(key)..": "..tostring(value))
+		  
+		   auth = true
+		end
+	end
+  
+  if (auth == false) then
+    return is_logged_in(sid)
+  end
+  
+  return auth
+  
+  
+end
+
+function is_logged_in(sid)
+  logged = false
+	for key,value in pairs( LOGGED_IN_USERS ) do
+	    if ((tonumber(key) == sid) or (tonumber(value) == sid)) then
+		   --print(tostring(key)..": "..tostring(value))
+		   logged = true
+		end
+	end
+  return logged
+end
+
+
+
+function send_authentication_request(rid)
+  rednet.send(rid, _AUTH_REQUEST_CODE)
+  
+  local sid, msg = rednet.receive(AUTH_TIMEOUT)
+  
+  
+   
+  if not (msg == nil) then 
+	  
+	 
+		  if (sid == rid) then
+			print("INFO: " .. username .. "'@#" .. sid .. "' is authenticating..")
+			do_login(msg, sid)
+		  else
+			print("INFO: AUTHENTICATION MISFIRE, RECEIVED MULTIPLE REQUESTS AT THE SAME TIME FROM DIFFERENT IDS!")
+			print("INFO: PLEASE TRY AGAIN LATER!")
+			print(tonumber(sid))
+			print(tonumber(rid))
+		  end
+
+  else
+   print("INFO: Authentication failed with a nil message.")
+  end
+  
+end
+
+while true do
+  local sid, msg = rednet.receive()
+
+  if (is_authenticated(sid)) then
+    print("INFO: '".. msg .. "' from #" .. sid)
+	
+	if (msg == _AUTH_REQUEST_CODE) then
+	  print("INFO: '" .. _AUTH_OKAY_CODE .. " >> #" .. sid)
+	  rednet.send(sid, _AUTH_OKAY_CODE)
+	end
+	
+	evaluate_remote_shell(sid, msg)
+	
+  else
+    print("INFO: SENDING AUTHENTICATION REQUEST TO #" .. sid)
+    send_authentication_request(sid)
+  end
+end

@@ -1,0 +1,4 @@
+print("Please enter a label: ")
+local label = read()
+disk.setLabel("right", label)
+print("Label written.")

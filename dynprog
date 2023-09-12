@@ -1,0 +1,341 @@
+
+print("DYNPROG _ Dynamic Programs Server")
+print("DYNPROG CONTROLLER @ " .. os.getComputerID())
+
+
+modem_side = "top"
+
+local disk_side = "left"
+
+_SELECT_PROGRAM = "411"
+_PROG_TRANSMIT_FAIL = "432"
+
+_REMOTE_REBOOT_REQUEST = "612"
+
+AUTH_TIMEOUT = 30
+SELECT_TIMEOUT = 5
+
+rednet.close(modem_side)
+rednet.open(modem_side)
+
+local registered_ids = {}
+
+
+
+--Id's in the table to send progs to
+
+function register(sid)
+  table.insert(registered_ids, sid, true)
+end
+
+function unregister(sid)
+  table.remove(registered_ids, sid)
+end
+
+function is_registered(sid)
+	--for key,value in pairs( registered_ids ) do
+		--print(tostring(key)..": "..tostring(value))
+		--if 
+	--end
+	
+	return not (registered_ids[sid] == nil)
+end
+
+
+function program_exists(table, prog)
+	for key,value in pairs( table ) do
+		--print(tostring(key)..": "..tostring(value))
+		if (tostring(value) == tostring(prog)) then
+          return true	
+        end		  
+	end
+	return false
+end
+
+function is_requesting_prog(req_str)
+  
+  for k,v in pairs( fs.list("disk\\") ) do
+    if (tostring(v) == tostring(req_str)) then
+	  return true
+	end
+  end
+  return false
+end
+
+function choose_program(sid)
+  rednet.send(sid, _SELECT_PROGRAM)
+  
+  local rid, response = rednet.receive(SELECT_TIMEOUT)
+  
+  if ((not sid) or (not rid)) then
+    print("Unknown RID / SID Sync")
+	--continue
+  else
+	  if (rid == sid) then
+		local prog = ""
+		local filetable = fs.list("disk\\")
+		
+		if (program_exists(filetable, response)) then
+		  --prog = response;
+		  transmit_prog(response, rid)
+		else
+		  print("File not found.. '" .. response .. "'")
+		end
+	  else 
+		--print("Sync error, received responses for " .. rid .. " and " .. sid .. " at same time.")
+		print("SYNC ERROR")
+		print(sid .. " =\= " .. rid)
+	  end
+  end
+end
+
+function transmit_prog(prog_name, sid)
+
+  print("Trying to transmit " .. prog_name .. " to " .. sid)
+  if not (fs.exists("disk\\"..prog_name)) then
+     print("Program not found for " .. sid .. ".. '" .. prog_name .. "'")
+	 rednet.send(sid, _PROG_TRANSMIT_FAIL)
+	else
+	  
+	  print("FILE FOUND!")
+	  print("Transmitting " .. prog_name .. " to " .. sid)
+	  
+	  local file = fs.open("disk\\"..prog_name, "r")
+	  
+	 
+	  --local read = file.readAll()
+	  --local serial = textutils.serialize(read)
+	  rednet.send(sid, file.readAll())
+
+	end
+end
+
+
+
+local shell_commands = {}
+local shell_command_ctr = 1
+
+function add_shell_command(cmdstr, target)
+  local commandRelation = {}
+  
+  table.insert(commandRelation, 1, cmdstr)
+  table.insert(commandRelation, 2, target)
+  
+  table.insert(shell_commands, shell_command_ctr, commandRelation)
+  
+  shell_command_ctr = shell_command_ctr + 1
+  
+end
+
+
+function is_shell_command(cmdstr)
+
+  local commandRelation = {}
+  
+  for k,v in pairs(shell_commands) do
+    commandRelation = v
+	
+	if (v[1] == cmdstr) then
+	  --print("true")
+	  return true
+	end
+
+  end
+  
+  return false
+  
+end
+
+function shell_command_value(cmdstr)
+  local commandRelation = {}
+  
+  for k,v in pairs(shell_commands) do
+    commandRelation = v
+	
+	if (v[1] == cmdstr) then
+	  --print("true")
+	  return tostring(v[2])
+	end
+
+  end
+  
+  return false
+ 
+end
+
+function handle_shell_command(msg) 
+
+  if not (msg == nil) then
+		
+			local cmd_tokens = {}
+			local i = 1
+
+			for word in string.gmatch(msg, '%S+') do
+				--print(word)
+				table.insert(cmd_tokens , i , word)
+				i = i+1
+			end
+		
+		  if (is_shell_command(cmd_tokens[1])) then
+		  
+		    print(shell_command_value(cmd_tokens[1]))
+			
+			if (cmd_tokens[1] == "execute") then
+			
+			  print("Executing..")
+			  local execStr = ""
+			  local fmt_ct = 1
+			  
+			  for i=1, #cmd_tokens do
+			    if (cmd_tokens[i] ~= "execute") then
+					if (i == (#cmd_tokens)) then
+					   execStr = execStr .. cmd_tokens[i]
+					else 
+					  execStr = execStr .. cmd_tokens[i] .. " "
+					end
+				end
+			  end
+			  
+			  
+				  --[[
+				  for k,v in pairs(cmd_tokens) do
+				  
+					if (tostring(v) ~= cmd_tokens[1]) then
+					
+					  if (#cmd_tokens == fmt_ct) then
+						execStr = execStr .. v .. " "
+					  else
+						execStr = execStr .. v .. " "
+					  end
+					end
+					
+					fmt_ct = fmt_ct + 1
+				  end
+				  ]]--
+			 
+			  
+				  print("'" .. execStr .. "'")
+				  shell.run(execStr)
+		    elseif (cmd_tokens[1] == "reprog") then --Must check if it's even a valid program or we risk bricking the computer lol
+			  if (#cmd_tokens == 3) then
+			    if (is_requesting_prog(cmd_tokens[3])) then
+				--reprog 49 cycler
+			      rednet.send(tonumber(cmd_tokens[2]), "reprog " .. cmd_tokens[3])
+				else
+				  print("Prog mismatch, no corresponding prog for " .. cmd_tokens[3])
+				end
+			  else
+			    print("Incorrect arguments for reprog remote programming")
+			  end
+			elseif (cmd_tokens[1] == "rb") then
+			  if (#cmd_tokens >= 2) then
+	
+			    rednet.send(tonumber(cmd_tokens[2]), "execute reboot") --TODO: maybe change to def shell yadda yadda
+			  else
+			    print("Command length mismatch for rb")
+			  end
+			elseif (cmd_tokens[1] == "rball") then
+			  remote_restart_all()
+			else
+			  print("Unrecognized request.")
+			end
+			
+		  else
+		    print("INTERRUPT: NET MSG > " .. msg)
+		  end
+		end
+end
+
+
+add_shell_command("cmds", "help, shutdown, execute, cmds, rball, reprog")
+
+add_shell_command("help", "hello")
+add_shell_command("shutdown", "os.reboot()")
+add_shell_command("rball", "")
+add_shell_command("rb", "")
+add_shell_command("execute", "")
+add_shell_command("reprog", "")
+
+register(13) -- the server room
+
+register(40)
+register(16)
+register(40)
+register(29)
+register(33)
+
+register(31)
+register(33)
+
+register(41) -- cycler computer for up/down
+
+register(37) -- power room computer
+
+register(38) -- deep phase computer
+
+register(39) -- front door
+
+register(44) -- constant phase power trickler cycler
+
+register(45) -- the cycler for the uranium facility and the sector 0 labs (6k -> 2k/lab x3)
+
+register(46) -- cycler for the power phaser interconnect to the facility
+
+register(48) -- test pc upstairs
+
+register(49) -- secondary test pc in server room
+
+register(54) -- cycler PC for Sector 0
+
+--TODO >> Make this all out to a table
+
+function net_sleep(time)
+
+ shell.run("disk//rsh_c") --sleep one second by default
+ --sleep(time)
+  
+end
+
+function remote_restart(tid) 
+  if (is_registered(tid)) then
+    rednet.send(tid, _REMOTE_REBOOT_REQUEST)
+  else
+    print("MISMATCH! tid unregistered (" .. tid .. ")")
+  end
+end
+
+function remote_restart_all()
+  for k, v in pairs(registered_ids) do
+    rednet.send(tonumber(v), "execute reboot") --TODO : maybe just do default shell thing vs relying on this val I may change ;)
+  end
+end
+
+sleepUpdateCount = 0
+
+while true do
+  print("*")
+  local sid, msg = rednet.receive(SELECT_TIMEOUT)
+  
+  if not msg then
+	print("*")
+  else
+	  print("INFO: Got '".. msg .. "' from #" .. sid)
+	  
+	  if (is_registered(sid)) then
+	    if (is_requesting_prog(msg)) then
+			choose_program(sid)
+			sleepUpdateCount = 0
+	    else
+		  handle_shell_command(msg)
+		end
+	  end
+	  
+  end
+  --net_sleep(1)
+   sleepUpdateCount = sleepUpdateCount + 1
+  print("Restarting in " .. 10 - sleepUpdateCount .. " counts")
+  if (sleepUpdateCount == 10) then
+    os.reboot()
+  end
+end
+

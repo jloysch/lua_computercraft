@@ -1,0 +1,151 @@
+local modem = "top"
+local computer_name="authentication_computer"
+
+rednet.close(modem)
+rednet.open(modem)
+
+term.clear()
+
+_AUTH_REQUEST_CODE = "100"
+_AUTH_OKAY_CODE = "111"
+_AUTH_ACCESS_DENIED = "000"
+
+_END_SESSION = "400"
+
+AUTH_TIMEOUT = 30
+
+BADGE_SECRET = "PP"
+
+
+
+
+print("[#" .. os.getComputerID() .. " listening..] - " .. computer_name)
+
+--sector_zero_computer_ids = {33}
+
+--local Table = {Key1 = "First key!", Key2 = "Second key!"}
+
+local id_access_table = {}
+secret_to_id_table = {}
+id_access_table.key = true
+secret_to_id_table.key = true
+
+
+--table.insert(secret_to_id_table, 13, "PP")
+--uid : u serect pw
+
+--table.insert(id_access_table, 13, "13,4,33,29")
+--uid : comps they can access
+
+function print_table(table)
+	for key,value in pairs( table ) do
+	   print(tostring(key)..": "..tostring(value))
+	end
+end
+
+local targetComputer = 0
+
+function rebuild_tables()
+	local tableFile = fs.open("disk//accesstable", "r") 
+	
+	if not tableFile then
+	  print("FATAL: NO TABLES FOUND!")
+	  print("KEEPING WHAT'S IN MEMORY!")
+	else
+	
+		local serializedTable = tableFile.readAll()
+
+		local unserialized = textutils.unserialize( serializedTable )
+
+		--print( myTable.value )
+		
+		secret_to_id_table = unserialized[1]
+		id_access_table = unserialized[2]
+		
+		--tables rebuilt
+	end
+end
+
+local updateCounter = 1
+
+while true do
+  local sid, msg = rednet.receive()
+  print("Got '".. msg .. "' from #" .. sid)
+  
+  targetComputer = sid
+   
+  if (msg == _AUTH_REQUEST_CODE) then
+    print("Sending " .. sid .. " auth..")
+    rednet.send(sid, _AUTH_REQUEST_CODE)
+	print("SENT.")
+	
+	local sid, msg = rednet.receive(AUTH_TIMEOUT)
+	print("GOT DISK ID BACK.")
+	
+	if not msg then 
+	  print("NO ID")
+	else
+	
+	print("ID '" .. msg .. "'")
+	
+	local uSecretID = 0
+	
+	rebuild_tables() --get all access info from disk
+	
+	for key,value in pairs( secret_to_id_table ) do --Get the users secret internal key
+	   --print(tostring(key)..": "..tostring(value))
+	   if ((tostring(value) == msg)) then
+	     uSecretID = tonumber(key)
+	     break
+	   end
+	end
+	
+	if not (id_access_table[uSecretID] == nil) then
+	
+		tab = {}
+		local i = 1
+		 for word in string.gmatch(id_access_table[uSecretID], '([^,]+)') do --See if its in the table, if so then get all PCs it can access
+				--print(word)
+				if not (word == nil) then
+				  --print(word)
+				  table.insert(tab , i , word)
+				  i = i+1
+				end
+		end
+		
+		for key,value in pairs( tab ) do
+		   --print(tostring(key)..": "..tostring(value)) -- Same as above
+		   if (tonumber(value) == sid) then 
+			   print("ACCESS GRANTED TO USER " .. uSecretID .. " at computer " .. tonumber(value))
+			   targetComputer = tonumber(value)
+			   rednet.send(sid, _AUTH_OKAY_CODE)
+			   break
+		   end
+		end
+		
+		
+		
+		
+		rednet.send(sid, _AUTH_ACCESS_DENIED)
+    else
+	  print("ACCESS DENIED!")
+	  rednet.send(targetComputer, _AUTH_ACCESS_DENIED)
+	end
+		
+	
+	
+	end
+
+	
+  else
+    print("IGNORED " .. sid)
+  end
+  
+  sleep(1)
+  updateCounter = updateCounter + 1
+  print("Updating tables in " .. 10 - updateCounter .. " counts.")
+  
+  if (updateCounter == 10) then
+    os.reboot()
+  end
+end

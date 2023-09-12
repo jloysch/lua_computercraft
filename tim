@@ -1,0 +1,35 @@
+local modem = "top"
+local computer_name="remote_computer"
+
+rednet.close(modem)
+rednet.open(modem)
+
+
+
+function reset_term()
+	term.clear()
+	term.setCursorPos(1,1)
+end
+
+while true do
+  reset_term()
+   print("Enter a computer ID to send a message to: ")
+   local id = read()
+   
+   while true do
+       reset_term()
+       print("[SENDING TO ".. id .. "]")
+	   print("")
+	   print("Message: ")
+	   local msg = read()
+	  
+	   print("Sending '" .. msg .. "' to computer #" .. id)
+	   
+	   rednet.send(tonumber(id),msg)   
+
+	   print("Sent '" .. msg .. "' to computer #" .. id)
+	   print("")
+   end
+
+end
+

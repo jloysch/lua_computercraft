@@ -1,0 +1,147 @@
+local modem = "top"
+
+local computer_name="dns_computer"
+
+rednet.close(modem)
+rednet.open(modem)
+
+term.clear()
+
+CONTROL_SERVER_INTERNAL_NETWORK_KEY = "(&AGD09adh)*Hd-dbvnkjad"
+NUKECON_SERVER_INTERNAL_NETWORK_KEY = "SODFUB08hse0f8gwe9f7"
+DNS_SERVER_INTERNAL_NETWORK_KEY = "SOFUB_SDFbvnkjaefd"
+
+DNS_COMPUTER_ID = 17
+
+print("[#" .. os.getComputerID() .. " listening..] - " .. computer_name)
+
+main_controller_computer = 15
+
+_AUTH_REQUEST_CODE = "100"
+_AUTH_OKAY_CODE = "111"
+
+_END_SESSION = "400"
+
+AUTH_TIMEOUT = 30
+
+
+function authenticate(sid)
+		   
+	rednet.send(sid, NUKECON_SERVER_INTERNAL_NETWORK_KEY)
+	
+	 local sid, msg = rednet.receive(AUTH_TIMEOUT)
+	 
+	 if (msg == _AUTH_OKAY_CODE) then
+	   LINKED_WITH_CONTROLLER = true
+	   CONTROLLER_ID = sid
+	   print("")
+	   print("LINKED TO CONTROLLER " .. sid)
+	   sleep(1)
+	   --clear_term()
+	   remote_repl()
+	 end
+	 
+end
+
+function check_controller_link()
+end
+
+function remote_repl()
+
+    while (LINKED_WITH_CONTROLLER) do
+		--reset_term()
+		check_controller_link()
+		print("\\\\" .. PASS_SHELL_TARGETEE .. "\\" .. os.getComputerID() .. "\\" .. CONTROLLER_ID .. "> ")
+		--term_up_one_line(6)
+		
+		local sid, msg = rednet.receive(ALIVE_TIMEOUT)
+		
+		rednet.send(PASS_SHELL_TARGET, tostring(msg))
+		
+		local sid, msg = rednet.receive(ALIVE_TIMEOUT)
+		
+		rednet.send(PASS_SHELL_TARGETEE, tostring(msg))
+		
+	end
+	
+	--termlines = termlines + 2
+end
+
+PASS_SHELL = false
+PASS_SHELL_TARGET = 0
+PASS_SHELL_TARGETEE = 0
+
+function pass_shell(sid, routeID)
+
+   rednet.send(routeID, _AUTH_REQUEST_CODE)
+   local sid, msg = rednet.receive(ALIVE_TIMEOUT)
+   
+    if (msg == _AUTH_REQUEST_CODE) then
+	   authenticate(sid)
+   elseif (msg == _AUTH_OKAY_CODE) then
+       print("")
+       print("ALREADY AUTHENTICATED!")
+	   print("")
+       LINKED_WITH_CONTROLLER = true
+	   CONTROLLER_ID = sid
+	   print("")
+	   print("LINKED TO CONTROLLER " .. sid)
+	   sleep(1)
+	   --clear_term()
+	   remote_repl()
+   else
+     print("SERVER DIDNT RESPOND. TRY AGAIN.")
+	 print("")
+   end
+end
+
+while true do
+  print("*")
+  local sid, msg = rednet.receive()
+  print("INFO: Got '".. msg .. "' from #" .. sid)
+  
+  if (sid == main_controller_computer) then
+	  routeID = -1
+	  
+	  if (msg == _AUTH_REQUEST_CODE) then
+	    rednet.send(main_controller_computer, _AUTH_OKAY_CODE)
+	  elseif (msg == "whoami") then
+	    rednet.send(main_controller_computer, computer_name)
+	  elseif (msg == "id") then
+	    rednet.send(main_controller_computer, tostring(os.getComputerID()))
+	  else
+		  
+		  
+		  print("Received " .. msg)
+		  if (msg == "nukecon") then
+			routeID = 18
+		  elseif (msg == "authserv") then
+			routeID = 14
+		  elseif (msg == "powerserv") then
+			routeID = 19
+		  else
+			routeID = -1
+		  end
+		  
+		  --print("INFO: Returning [" .. sid .. "->" .. msg .. "=" .. routeID .. "]")
+		  --rednet.send(sid,tostring(routeID))
+		  if not (routeID == -1) then
+			  print("Passing shell <" .. sid .. "<>" .. routeID .. ">")
+			  
+				PASS_SHELL_TARGETEE = sid
+		
+				PASS_SHELL_TARGET = routeID
+				
+				pass_shell(PASS_SHELL_TARGETEE, routeID)
+				
+			  print("DONE")
+		  else
+			print("Sending back unrecognized input")
+			rednet.send(main_controller_computer, "Unrecognized input " .. msg)
+		  end
+	end
+	  
+  else 
+    print("INFO: Refusing request from computer '" ..sid.. "' (unregistered)")
+  end
+end

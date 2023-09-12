@@ -1,0 +1,234 @@
+term.clear()
+term.setCursorPos(1,1)
+
+local monitor = peripheral.wrap( "back" )
+monitor.clear()
+monitor.setCursorPos(1,1) 
+monitor.setTextScale(1)
+
+DUMP_MAX_RETRY = 5
+DUMP_RETRY_COUNT = 0
+
+
+cursorpos_x = 1
+cursorpos_y = 2
+
+reactor_number = 3
+job_num = 0
+
+function monitor_write_line(msg) 
+  
+  monitor.setCursorPos(1,1)
+  monitor.write("JOB #".. job_num .. " : RCTR" .. reactor_number)
+  monitor.setCursorPos(cursorpos_x, cursorpos_y)
+
+  monitor.write(msg)
+  cursorpos_y = cursorpos_y + 1
+  
+  if (cursorpos_y == 4) then
+    monitor.clear()
+	monitor_write_line("Processing..")
+    cursorpos_x = 1
+	cursorpos_y = 2
+  end
+  
+  monitor.setCursorPos(cursorpos_x, cursorpos_y)
+end
+
+
+
+print("NUKECON CONTROL SERVLET >")
+monitor_write_line("[NUKECON SERVLET]")
+
+redstone.setOutput("bottom",false)
+
+redstone.setOutput("top",true)
+
+redstone.setOutput("right",false)
+redstone.setOutput("left",false)
+redstone.setOutput("front",false)
+
+throttle = false
+throttleTimeout = 10
+
+item_rcv_time = 10
+
+
+
+
+function dump_reactor_chambers()
+  print("Clearing reactor chambers..")
+  monitor_write_line("FULLCLEAR CALLED") 
+  for i=1,64 do
+    redstone.setOutput("front", true)
+    sleep(0.5)
+    redstone.setOutput("front",false)
+	sleep(0.5)
+	print("Clearing reactor chamber " .. i .. "/" .. "64, Please wait..")
+	
+	monitor_write_line("FCLR " .. i .. "/" .. "64, Please wait..")
+	
+  end
+end
+
+function check_throttle()
+  sleep(1)
+  if redstone.getInput("right") == true then
+    redstone.setOutput("top", true)
+	redstone.setOutput("left", false)
+	redstone.setOutput("right", false)
+    redstone.setOutput("front", true)
+    sleep(1)
+    print("THERMAL MELTDOWN! SHUTTING DOWN TO AVOID DAMAGE [THERMAL RETRY " .. DUMP_RETRY_COUNT .. "/" .. DUMP_MAX_RETRY .. "]!")
+	monitor_write_line("MELTDOWN! [RETRY " .. DUMP_RETRY_COUNT .. "/" .. DUMP_MAX_RETRY .. "]!")
+
+	
+	if (DUMP_RETRY_COUNT == DUMP_MAX_RETRY) then 
+	  print("DOING DUMP IMMEDIATELY, SHUT DOWN!")
+	  monitor_write_line("##DUMPING##")
+
+	  DUMP_RETRY_COUNT = 1
+	  dump_reactor_chambers()
+	end
+	
+	DUMP_RETRY_COUNT = DUMP_RETRY_COUNT+1
+	
+    for i=1,throttleTimeout do
+
+      sleep(1)
+      if i%1 == 0 then
+        print("{COOLDOWN} Attempting to restart in " .. throttleTimeout-i .. " seconds.")
+		monitor_write_line("COOLING " .. throttleTimeout-i .. " seconds.")
+		
+      elseif i%2 ==0 then
+        print("{COOLDOWN} Attempting to restart in " .. throttleTimeout-i .. " seconds..")
+		monitor_write_line("COOLING " .. throttleTimeout-i .. " seconds..")
+		
+      else
+        print("{COOLDOWN} Attempting to restart in " .. throttleTimeout-i .. " seconds...")
+		monitor_write_line("COOLING " .. throttleTimeout-i .. " seconds...")
+		
+      end
+    end
+	
+	
+  redstone.setOutput("top", false)
+
+  throttle = true
+  
+  else
+  
+    print(">> THERMALS OK.")
+	monitor_write_line(">> THERMALS OK")
+	
+	throttle = false
+	redstone.setOutput('front', false)
+  end  
+end
+
+function try_start()
+
+  redstone.setOutput("top",false)
+  
+end
+
+
+ICE_PULSE_TIME = 1
+
+function request_ice(num)
+  
+  for i=1,num do
+    redstone.setOutput("bottom", false)
+	sleep(1)
+    print("Requesting x64 Ice")
+	
+	monitor_write_line("REQ x64 Ice")
+	
+	redstone.setOutput("bottom",true)
+	sleep(ICE_PULSE_TIME)
+    print("Receiving..")
+
+	monitor_write_line("Receiving..")
+	
+    check_throttle();
+    sleep(item_rcv_time)
+  end
+end
+
+function request_fuel(num)
+
+  for i=1,num do
+  
+    redstone.setOutput("left",false)
+    sleep(1)
+	
+   
+    print("Requesting x1 Uranium Cell")
+	monitor_write_line("REQ x1 FUEL")
+
+	redstone.setOutput("left",true)
+    sleep(1)
+    print("Receiving..")
+	
+	monitor_write_line("Receiving..")
+
+    check_throttle();
+    sleep(item_rcv_time)
+    redstone.setOutput("left",false)
+  end
+end
+
+print("DUMPING (PRE_PURGE) REACTOR CHAMBERS")
+monitor_write_line("PRE-PURGE")
+dump_reactor_chambers()
+
+while not throttle do
+
+
+  check_throttle()
+  
+  if not throttle then
+    print("[PULSE FACTORY, JOB #"..job_num)
+	monitor_write_line(">> JOB #"..job_num)
+	
+
+
+    try_start()
+    print("")  
+	monitor_write_line("")
+	
+    
+	  if (job_num < 6) then
+	    request_ice(13)
+	    request_fuel(9)
+	  else
+	    request_ice(9)
+	  end
+   
+    sleep(3)
+    print("JOB CYCLE " .. job_num .. " COMPLETED]")
+	monitor_write_line("JOB " .. job_num .. " OK]]")
+	
+	job_num = job_num + 1
+	print("")
+	
+	monitor_write_line("")
+	
+	redstone.setOutput('front', false)
+	
+	if (job_num == 64) then 
+	  print("JOBS DONE, DUMPING CHAMBERS THEN CYCLING")
+	  monitor_write_line("JOBS DONE, CYCLING")
+	  dump_reactor_chambers();
+	  job_num = 1
+	end
+	
+  end
+  
+  throttle = false
+end
+
+redstone.setOutput("top",false)
+
+
+

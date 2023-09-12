@@ -1,0 +1,6 @@
+print("Remote booter")
+print("")
+print("Enter an ID to reboot: ")
+sleep(2)
+rednet.send(tonumber(read()), "612")
+print("Sent.")

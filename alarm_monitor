@@ -1,0 +1,120 @@
+local monitor = peripheral.wrap( "right" )
+monitor.clear()
+monitor.setCursorPos(1,1)
+monitor.setTextScale(2)
+
+redstone.setOutput("left", true)
+
+max_alarm_timer_timeout = 5
+icedowntime=20
+
+cursorpos_x = 1
+cursorpos_y = 1
+
+function monitor_write_line(msg) 
+  
+  monitor.setCursorPos(1,1)
+  --monitor.write("PANIC #".. os.time())
+  --monitor.setCursorPos(cursorpos_x, cursorpos_y)
+
+  monitor.write(msg)
+  --cursorpos_y = cursorpos_y + 1
+  
+ -- if (cursorpos_y == 2) then
+  --  monitor.clear()
+  --  cursorpos_x = 1
+	--cursorpos_y = 2
+ -- end
+  
+  monitor.setCursorPos(cursorpos_x, cursorpos_y)
+end
+
+function ice_down() 
+  monitor.clear()
+  print("")
+  print("Icing..")
+  
+  monitor_write_line("Icing..")
+  
+  redstone.setOutput("left", false)
+  
+  icedown = true
+  
+  while icedown do
+    if (redstone.getInput("bottom") == true) then
+	  print("Receiving ice for panic at " .. os.time())
+	  monitor_write_line("Icing..")
+	  sleep(1)
+	else
+	  for i=1,icedowntime do
+	    sleep(1)
+	  end
+	  
+	  icedown = false
+	  print("Icedown completed.")
+	  monitor.clear()
+	  monitor_write_line("OK")
+	  sleep(3)
+	  redstone.setOutput("left", true)
+	  os.reboot()
+	end
+  end
+  
+end
+
+function start_alarm_timer()
+  print("PANIC EVENT AT " .. os.time())
+  monitor_write_line("PANIC EVENT AT " .. os.time())
+  for i=1,max_alarm_timer_timeout do
+    print("PANIC > " .. max_alarm_timer_timeout-i .. " seconds remaining total until ice-down..")
+	monitor_write_line(max_alarm_timer_timeout-i)
+    sleep(1)
+  end
+  
+  if (redstone.getInput("bottom") == true) then
+    ice_down()
+  else
+    print("[FIXED PANIC, ICEDOWN AVERTED]")
+    os.reboot()
+  end
+end
+
+
+function start_alarm_monitor()
+	while true do 
+		term.clear()
+		term.setCursorPos(1,1)
+		print("[Alarm Monitor] > Running.")
+		monitor_write_line("RUNNING..")
+		
+		coroutine.yield()
+		
+		while true do
+		  if (redstone.getInput("bottom") == true) then
+			start_alarm_timer()
+		  else
+			sleep(0.1)
+		  end
+		  coroutine.yield()
+		end
+	end
+end
+
+while true do 
+  parallel.waitForAll(start_alarm_monitor, repl) -- Runs both functions at the same time. 
+end
+
+
+local function repl() -- The second action to execute at the same time
+   while true do
+       print("Press a key :D/>")
+       os.sleep(0)
+	   local _, key = os.pullEvent("key")
+       print(keys.getName(key))
+       os.sleep(0)
+	   
+   end
+   
+   coroutine.yield()
+end
+

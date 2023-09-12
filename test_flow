@@ -1,0 +1,125 @@
+local monitor = peripheral.wrap( "left" )
+monitor.clear()
+monitor.setCursorPos(1,1)
+monitor.setTextScale(1)
+
+term.clear()
+term.setCursorPos(1,1)
+
+cursorpos_x = 1
+cursorpos_y = 2
+
+maxEUMeasured = 0
+
+function monitor_write_line(msg) 
+  
+  monitor.setCursorPos(1,1)
+  monitor.write("[>>> ".. maxEUMeasured .. " eu/t >]")
+  monitor.setCursorPos(cursorpos_x, cursorpos_y)
+
+  monitor.write(msg)
+ 
+   
+   
+	if (cursorpos_y == 6) then
+		monitor.clear()
+		cursorpos_y = 2
+	end
+	
+	cursorpos_y = cursorpos_y + 1
+ 
+ 
+  
+  monitor.setCursorPos(cursorpos_x, cursorpos_y)
+end
+
+print("[INTERNAL-POWER-TESTER]")
+monitor_write_line("[INTERNAL-POWER-TESTER]")
+print("Testing internal phase flow..")
+monitor_write_line("Testing internal phase flow..")
+sleep(2)
+print("Beginning..")
+monitor_write_line("Beginning..")
+sleep(1)
+
+redstone.setOutput("bottom", true)
+redstone.setOutput("right", false)
+redstone.setOutput("top", false)
+
+elapseTime = 0
+
+function dump_to_deep_phase()
+  redstone.setOutput("right", true)
+  print("The computer must now sleep to finish draining.")
+  monitor_write_line("The computer must now sleep to finish draining.")
+ 
+  
+  max = (((512*10000000)/20))
+  
+  timeRemaining = 100
+  
+  for i=1,math.ceil(10000000/512/20) do
+  
+    timeRemaining = ((((10000000-(i*20*512)))/(512*20)))/60
+	
+	print("> DRAINED " .. (i*20*512/10000000)*100 .. ")% | " .. timeRemaining .. " minutes remaining.")
+	monitor_write_line("> DRAINED " .. (i*20*512/10000000)*100 .. ")% | " .. timeRemaining .. " minutes remaining.")
+    sleep(1)
+	
+
+  end
+  
+  print("Drained into deep phase. Manually restart process and ensure MFSU is drained before next test.")
+  monitor_write_line("Drained into deep phase. Manually restart process and ensure MFSU is drained before next test.")
+  redstone.setOutput("right",false)
+end
+
+function start_flow_test()
+
+  print("Testing.. please wait..")
+  monitor_write_line("Testing.. please wait..")
+  sleep(1)
+  
+  redstone.setOutput("bottom", true)
+  redstone.setOutput("right", false)
+  
+  startTime = os.time()
+  
+  time = true
+  
+  while true do 
+    if (redstone.getInput("top") == false) then
+	  time = false
+	else
+	  break
+	end
+	sleep(0.1)
+  end
+  
+  
+  elapseTime = os.time()-startTime
+  
+  print(elapseTime .. " os time elapsed.")
+  monitor_write_line(elapseTime .. " os time elapsed.")
+  
+  sleep(1)
+  print(elapseTime * 1200 .. " ticks elapsed.")
+  monitor_write_line(elapseTime * 1200 .. " ticks elapsed.")
+  sleep(1)
+  print(10000000/(elapseTime * 1200) .. " eU/t Measured.")
+  maxEUMeasured = 10000000/(elapseTime * 1200)
+  monitor_write_line(10000000/(elapseTime * 1200) .. " eU/t Measured.")
+  sleep(3)
+  redstone.setOutput("bottom",false)
+  dump_to_deep_phase()
+end
+
+print("Linking inner-loop to test MFSU..")
+monitor_write_line("Linking inner-loop to test MFSU..")
+sleep(1)
+print("Starting test!")
+monitor_write_line("Starting test!")
+
+start_flow_test()
+
+redstone.setOutput("right", false)
